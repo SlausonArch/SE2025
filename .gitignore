@@ -1,0 +1,37 @@
+# === 공통 ===
+.env
+*.log
+*.sqlite3
+.DS_Store
+Thumbs.db
+.vscode/
+__pycache__/
+*.pyc
+
+# === Docker 관련 ===
+*.pid
+*.sock
+docker-volume/
+
+# === 프론트엔드 (React + Vite) ===
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env
+
+# === 백엔드 (FastAPI + Python) ===
+backend/__pycache__/
+backend/*.pyc
+backend/env/
+backend/.venv/
+backend/.env
+
+# === 테스트/캐시 관련 ===
+*.coverage
+coverage/
+.cache/
+pytest_cache/
+
+# === OS별 무시 파일 ===
+ehthumbs.db
+Icon?
