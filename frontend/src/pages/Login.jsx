@@ -1,30 +1,35 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { authAPI, setToken, setCurrentUser } from '../utils/api';
 
 function Login() {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
 
-    const users = JSON.parse(localStorage.getItem('users')) || [];
-    const user = users.find(
-      (u) => u.username === formData.username && u.password === formData.password
-    );
-
-    if (user) {
-      localStorage.setItem('currentUser', JSON.stringify(user));
-
+    try {
+      const response = await authAPI.login(formData);
+      
+      // 토큰과 사용자 정보 저장
+      setToken(response.access_token);
+      setCurrentUser(response.user);
+      
       alert('로그인 성공!');
       navigate('/home');
-    } else {
-      setError('아이디 또는 비밀번호가 잘못되었습니다.');
+    } catch (err) {
+      setError(err.message || '로그인에 실패했습니다.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -39,6 +44,7 @@ function Login() {
           onChange={handleChange}
           required
           style={styles.input}
+          disabled={loading}
         />
         <input
           name="password"
@@ -48,8 +54,15 @@ function Login() {
           onChange={handleChange}
           required
           style={styles.input}
+          disabled={loading}
         />
-        <button type="submit" style={styles.button}>Log In</button>
+        <button 
+          type="submit" 
+          style={{...styles.button, opacity: loading ? 0.7 : 1}}
+          disabled={loading}
+        >
+          {loading ? '로그인 중...' : 'Log In'}
+        </button>
 
         <div style={{ height: '1.5rem' }}>
           <p style={{ ...styles.error, visibility: error ? 'visible' : 'hidden' }}>

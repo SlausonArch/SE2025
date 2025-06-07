@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { authAPI } from '../utils/api';
 
 function SignUp() {
   const navigate = useNavigate();
@@ -9,33 +10,26 @@ function SignUp() {
     password: '',
   });
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
 
-    const users = JSON.parse(localStorage.getItem('users')) || [];
-
-    const usernameExists = users.some((u) => u.username === formData.username);
-    const nicknameExists = users.some((u) => u.nickname === formData.nickname);
-
-    if (usernameExists) {
-      setError('이미 존재하는 아이디입니다.');
-      return;
+    try {
+      await authAPI.signup(formData);
+      alert('회원가입이 완료되었습니다!');
+      navigate('/login');
+    } catch (err) {
+      setError(err.message || '회원가입에 실패했습니다.');
+    } finally {
+      setLoading(false);
     }
-
-    if (nicknameExists) {
-      setError('이미 존재하는 닉네임입니다.');
-      return;
-    }
-
-    users.push(formData);
-    localStorage.setItem('users', JSON.stringify(users));
-    alert('회원가입이 완료되었습니다!');
-    navigate('/login');
   };
 
   return (
@@ -49,6 +43,7 @@ function SignUp() {
           onChange={handleChange}
           required
           style={styles.input}
+          disabled={loading}
         />
         <input
           name="nickname"
@@ -57,6 +52,7 @@ function SignUp() {
           onChange={handleChange}
           required
           style={styles.input}
+          disabled={loading}
         />
         <input
           name="password"
@@ -66,8 +62,15 @@ function SignUp() {
           onChange={handleChange}
           required
           style={styles.input}
+          disabled={loading}
         />
-        <button type="submit" style={styles.button}>가입하기</button>
+        <button 
+          type="submit" 
+          style={{...styles.button, opacity: loading ? 0.7 : 1}}
+          disabled={loading}
+        >
+          {loading ? '가입 중...' : '가입하기'}
+        </button>
       </form>
 
       <p style={styles.loginLink}>
@@ -98,7 +101,7 @@ const styles = {
   header: {
     marginBottom: '1rem',
     color: 'black',
-    fontSize: '2rem', // ⬅ 글씨 크기 키움
+    fontSize: '2rem',
     fontWeight: 'bold',
   },
   form: {
@@ -110,14 +113,14 @@ const styles = {
     margin: '0 auto',
   },
   input: {
-    padding: '1.2rem',          // ⬅ 입력창 크기 (패딩) 키움
-    fontSize: '1.25rem',        // ⬅ 입력 텍스트 크기 키움
-    borderRadius: '8px',        // ⬅ 모서리도 약간 키움
+    padding: '1.2rem',
+    fontSize: '1.25rem',
+    borderRadius: '8px',
     border: '1px solid #ccc',
   },
   button: {
     padding: '1.2rem',
-    fontSize: '1.25rem',        // ⬅ 버튼 텍스트 크기 키움
+    fontSize: '1.25rem',
     borderRadius: '8px',
     border: 'none',
     backgroundColor: '#4eaaff',
@@ -126,8 +129,8 @@ const styles = {
   },
   loginLink: {
     marginTop: '1.5rem',
-    color: 'black',             // 검은색으로 변경 가능
-    fontSize: '1.1rem',         // ⬅ 안내 텍스트 크기 키움
+    color: 'black',
+    fontSize: '1.1rem',
   },
   link: {
     textDecoration: 'none',

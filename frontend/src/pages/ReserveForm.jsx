@@ -1,41 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { reservationsAPI, tablesAPI, getCurrentUser } from '../utils/api';
 import './ReserveForm.css';
-
-const tables = [
-  { id: 1, capacity: 4 }, { id: 2, capacity: 4 }, { id: 3, capacity: 4 }, { id: 4, capacity: 4 }, { id: 5, capacity: 4 },
-  { id: 6, capacity: 4 }, { id: 7, capacity: 4 }, { id: 8, capacity: 4 }, { id: 9, capacity: 8 }, { id: 10, capacity: 8 },
-];
-
-const generateReservationMap = () => {
-  const map = {};
-  const today = new Date();
-  for (let i = 0; i < 30; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    const dateStr = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
-    ['점심', '저녁'].forEach((time) => {
-      tables.forEach((table) => {
-        const key = `${table.id}-${dateStr} ${time}`;
-        map[key] = 'available';
-      });
-    });
-  }
-  return map;
-};
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'available': return '#4caf50';
-    case 'pending': return '#ff9800';
-    case 'booked': return '#f44336';
-    default: return '#9e9e9e';
-  }
-};
 
 const ReserveForm = () => {
   const navigate = useNavigate();
-  const [reservationMap, setReservationMap] = useState(generateReservationMap());
+  const [tables, setTables] = useState([]);
+  const [reservationStatus, setReservationStatus] = useState({});
   const [date, setDate] = useState('');
   const [timePeriod, setTimePeriod] = useState('점심');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,55 +16,121 @@ const ReserveForm = () => {
   const [card, setCard] = useState('');
   const [people, setPeople] = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // ✅ 예약 내역을 반영하여 예약 상태 업데이트
   useEffect(() => {
-    const reservations = JSON.parse(localStorage.getItem('reservations') || '[]');
-    const updatedMap = generateReservationMap();
-    reservations.forEach(({ tableId, timeSlot }) => {
-      const key = `${tableId}-${timeSlot}`;
-      updatedMap[key] = 'booked';
-    });
-    setReservationMap(updatedMap);
-  }, []);
+    // 사용자 인증 확인
+    const user = getCurrentUser();
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    // 테이블 정보 로드
+    loadTables();
+  }, [navigate]);
+
+  useEffect(() => {
+    // 날짜와 시간이 선택되면 예약 상태 로드
+    if (date && timePeriod) {
+      loadReservationStatus();
+    }
+  }, [date, timePeriod]);
+
+  const loadTables = async () => {
+    try {
+      const tablesData = await tablesAPI.getAll();
+      setTables(tablesData);
+    } catch (error) {
+      console.error('테이블 정보 로드 실패:', error);
+      alert('테이블 정보를 불러오는데 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadReservationStatus = async () => {
+    try {
+      const statusData = await reservationsAPI.getStatus(date, timePeriod);
+      setReservationStatus(statusData.status);
+    } catch (error) {
+      console.error('예약 상태 로드 실패:', error);
+      setReservationStatus({});
+    }
+  };
+
+  const getStatusColor = (tableId) => {
+    const status = reservationStatus[tableId];
+    switch (status) {
+      case 'available': return '#4caf50';
+      case 'booked': return '#f44336';
+      default: return '#9e9e9e';
+    }
+  };
+
+  const getStatusText = (tableId) => {
+    const status = reservationStatus[tableId];
+    switch (status) {
+      case 'available': return '예약 가능';
+      case 'booked': return '예약 완료';
+      default: return '확인 중';
+    }
+  };
 
   const handleSelect = (tableId) => {
-    if (isSubmitting) return;
+    if (isSubmitting || reservationStatus[tableId] !== 'available') return;
     setSelectedTable(tableId);
   };
 
-  const handleSubmitReservation = () => {
+  const handleSubmitReservation = async () => {
     if (!name || !phone || !card || people < 1) {
       alert('모든 정보를 입력해주세요.');
       return;
     }
 
     setIsSubmitting(true);
-    const timeSlot = `${date} ${timePeriod}`;
-    const key = `${selectedTable}-${timeSlot}`;
 
-    if (reservationMap[key] === 'available') {
-      const reservation = { tableId: selectedTable, timeSlot, name, phone, card, people, timestamp: new Date().toISOString() };
-      const reservations = JSON.parse(localStorage.getItem('reservations') || '[]');
-      reservations.push(reservation);
-      localStorage.setItem('reservations', JSON.stringify(reservations));
+    try {
+      const reservationData = {
+        table_id: selectedTable,
+        reservation_date: date,
+        time_period: timePeriod,
+        name,
+        phone,
+        credit_card: card,
+        guests: people
+      };
 
+      await reservationsAPI.create(reservationData);
+      
       // 예약 상태 업데이트
-      setReservationMap((prev) => ({ ...prev, [key]: 'booked' }));
+      setReservationStatus(prev => ({
+        ...prev,
+        [selectedTable]: 'booked'
+      }));
+      
       setShowModal(true);
       setSelectedTable(null);
-      setName(''); setPhone(''); setCard(''); setPeople(1);
-    } else {
-      alert('예약할 수 없는 테이블입니다.');
+      setName(''); 
+      setPhone(''); 
+      setCard(''); 
+      setPeople(1);
+    } catch (error) {
+      console.error('예약 실패:', error);
+      alert(error.message || '예약에 실패했습니다.');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   const handleModalConfirm = () => {
     setShowModal(false);
     navigate('/home');
   };
+
+  if (loading) {
+    return <div className="container">로딩 중...</div>;
+  }
 
   return (
     <div className="container">
@@ -130,17 +167,45 @@ const ReserveForm = () => {
       {selectedTable ? (
         <div className="formBox">
           <h3>예약 정보 입력</h3>
-          <p>Table {selectedTable} / {tables.find(t => t.id === selectedTable).capacity}인</p>
-          <input type="text" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} className="input" />
-          <input type="text" placeholder="전화번호" value={phone} onChange={(e) => setPhone(e.target.value)} className="input" />
-          <input type="text" placeholder="카드번호" value={card} onChange={(e) => setCard(e.target.value)} className="input" />
-          <select value={people} onChange={(e) => setPeople(Number(e.target.value))} className="input">
-            {[...Array(tables.find(t => t.id === selectedTable).capacity)].map((_, i) => (
+          <p>Table {selectedTable} / {tables.find(t => t.id === selectedTable)?.capacity}인</p>
+          <input 
+            type="text" 
+            placeholder="이름" 
+            value={name} 
+            onChange={(e) => setName(e.target.value)} 
+            className="input" 
+          />
+          <input 
+            type="text" 
+            placeholder="전화번호" 
+            value={phone} 
+            onChange={(e) => setPhone(e.target.value)} 
+            className="input" 
+          />
+          <input 
+            type="text" 
+            placeholder="카드번호" 
+            value={card} 
+            onChange={(e) => setCard(e.target.value)} 
+            className="input" 
+          />
+          <select 
+            value={people} 
+            onChange={(e) => setPeople(Number(e.target.value))} 
+            className="input"
+          >
+            {[...Array(tables.find(t => t.id === selectedTable)?.capacity || 1)].map((_, i) => (
               <option key={i + 1} value={i + 1}>{i + 1}명</option>
             ))}
           </select>
           <div>
-            <button onClick={handleSubmitReservation} className="submitButton">예약하기</button>
+            <button 
+              onClick={handleSubmitReservation} 
+              className="submitButton"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '예약 중...' : '예약하기'}
+            </button>
             <button onClick={() => setSelectedTable(null)} className="cancelButton">취소</button>
           </div>
         </div>
@@ -150,19 +215,21 @@ const ReserveForm = () => {
             <h3>테이블 예약 상태</h3>
             <div className="tableList">
               {tables.map((table) => {
-                const key = `${table.id}-${date} ${timePeriod}`;
-                const status = reservationMap[key];
+                const isAvailable = reservationStatus[table.id] === 'available';
                 return (
                   <button
                     key={table.id}
                     onClick={() => handleSelect(table.id)}
                     className="tableButton"
-                    style={{ backgroundColor: getStatusColor(status), cursor: status === 'available' ? 'pointer' : 'not-allowed' }}
-                    disabled={status !== 'available' || isSubmitting}
+                    style={{ 
+                      backgroundColor: getStatusColor(table.id), 
+                      cursor: isAvailable ? 'pointer' : 'not-allowed' 
+                    }}
+                    disabled={!isAvailable || isSubmitting}
                   >
                     Table {table.id} ({table.capacity}인)
                     <div className="statusText">
-                      {status === 'available' ? '예약 가능' : status === 'booked' ? '예약 완료' : '예약 진행 중'}
+                      {getStatusText(table.id)}
                     </div>
                   </button>
                 );

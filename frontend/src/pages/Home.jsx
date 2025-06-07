@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { removeToken, removeCurrentUser, getCurrentUser } from '../utils/api';
 import './HomeLayout.css';
 
 const TableLayout = () => {
   const navigate = useNavigate();
   const [remaining, setRemaining] = useState(null);
+  const [user, setUser] = useState(null);
 
   const tables = [
     { id: 1, type: '창가, 4명' },
@@ -19,16 +21,47 @@ const TableLayout = () => {
     { id: 10, wide: true, type: '방, 8명' },
   ];
 
+  useEffect(() => {
+    // 사용자 정보 확인
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      navigate('/login');
+      return;
+    }
+    setUser(currentUser);
+
+    // 세션 타이머 (30분)
+    const sessionDuration = 30 * 60 * 1000; // 30분
+    const startTime = Date.now();
+    
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const remainingTime = sessionDuration - elapsed;
+      
+      if (remainingTime <= 0) {
+        handleLogout(true); // 자동 로그아웃
+      } else {
+        setRemaining(remainingTime);
+        // 커스텀 이벤트 발생
+        window.dispatchEvent(new CustomEvent('session-tick', { detail: remainingTime }));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [navigate]);
+
   const handleReserve = () => {
     navigate('/reserve');
   };
 
-  const handleLogout = () => {
-    const confirmLogout = window.confirm('로그아웃 하시겠습니까?');
-    if (confirmLogout) {
-      localStorage.removeItem('currentUser');
-      alert('로그아웃 되었습니다.');
-      navigate('/');
+  const handleLogout = (isAutoLogout = false) => {
+    const message = isAutoLogout ? '세션이 만료되어 자동 로그아웃됩니다.' : '로그아웃 하시겠습니까?';
+    
+    if (isAutoLogout || window.confirm(message)) {
+      removeToken();
+      removeCurrentUser();
+      alert(isAutoLogout ? '세션이 만료되었습니다.' : '로그아웃 되었습니다.');
+      navigate('/login');
     }
   };
 
@@ -52,9 +85,16 @@ const TableLayout = () => {
     return `${min}분 ${remainingSec < 10 ? '0' : ''}${remainingSec}초`;
   };
 
+  if (!user) {
+    return <div>로딩 중...</div>;
+  }
+
   return (
     <div className="table-layout-container">
       <h2>식당 테이블 배치도</h2>
+      <p style={{ color: 'gray', fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+        환영합니다, {user.nickname}님!
+      </p>
       {remaining !== null && (
         <p style={{ color: 'gray', fontSize: '0.9rem', marginBottom: '1rem' }}>
           자동 로그아웃까지 남은 시간: {formatTime(remaining)}
@@ -63,7 +103,7 @@ const TableLayout = () => {
       <div className="top-buttons">
         <button className="nav-button" onClick={handleCheckReservation}>예약 확인</button>
         <button className="nav-button" onClick={handleReserve}>예약하기</button>
-        <button className="nav-button" onClick={handleLogout}>로그아웃</button>
+        <button className="nav-button" onClick={() => handleLogout()}>로그아웃</button>
       </div>
       <div className="layout-wrapper">
         <div className="window-area top-window">창 문</div>
